@@ -35,6 +35,28 @@ YOGAS = [
 ]
 MOVABLE_KARANAS = ["Bava", "Bālava", "Kaulava", "Taitila", "Gara", "Vaṇija", "Viṣṭi (Bhadrā)"]
 VARAS = ["Ravivāra", "Somavāra", "Maṅgalavāra", "Budhavāra", "Guruvāra", "Śukravāra", "Śanivāra"]
+RASHIS = [
+    "Meṣa", "Vṛṣabha", "Mithuna", "Karka", "Siṁha", "Kanyā",
+    "Tulā", "Vṛścika", "Dhanu", "Makara", "Kumbha", "Mīna",
+]
+
+NAK_ARC = 360 / 27          # 13°20′ per nakṣatra
+PADA_ARC = NAK_ARC / 4      # 3°20′ per pada
+
+PLANET_FLAGS = FLAGS | swe.FLG_SIDEREAL     # Lahiri sidereal longitudes
+
+# (key, sanskrit, symbol, swe body). Ketu is derived from Rāhu (opposite point).
+GRAHAS = [
+    ("su", "Sūrya", "☉", swe.SUN),
+    ("mo", "Candra", "☽", swe.MOON),
+    ("ma", "Maṅgala", "♂", swe.MARS),
+    ("bu", "Budha", "☿", swe.MERCURY),
+    ("gu", "Guru", "♃", swe.JUPITER),
+    ("sk", "Śukra", "♀", swe.VENUS),
+    ("sa", "Śani", "♄", swe.SATURN),
+    ("ra", "Rāhu", "☊", swe.MEAN_NODE),
+    ("ke", "Ketu", "☋", None),
+]
 
 
 @dataclass(frozen=True)
@@ -74,6 +96,55 @@ def sun_moon(jd: float) -> tuple[float, float]:
 
 def ayanamsa(jd: float) -> float:
     return swe.get_ayanamsa_ut(jd)
+
+
+# ---------- navagraha ----------
+
+@dataclass(frozen=True)
+class Graha:
+    key: str
+    name: str
+    symbol: str
+    longitude: float        # sidereal degrees, 0..360
+    rashi: str
+    nakshatra: str
+    pada: int               # 1..4
+    navamsa: str            # D9 sign — the pada's rāśi in the navāṁśa varga
+    retrograde: bool
+
+    @property
+    def position(self) -> tuple[str, str, int]:
+        """The identity a transit watcher keys on."""
+        return (self.rashi, self.nakshatra, self.pada)
+
+
+def _place_graha(key: str, name: str, symbol: str, lon: float, retro: bool) -> Graha:
+    lon %= 360
+    return Graha(
+        key=key, name=name, symbol=symbol, longitude=lon,
+        rashi=RASHIS[int(lon // 30)],
+        nakshatra=NAKSHATRAS[int(lon // NAK_ARC)],
+        pada=int((lon % NAK_ARC) // PADA_ARC) + 1,
+        navamsa=RASHIS[int(lon // PADA_ARC) % 12],   # 9 navāṁśas of 3°20′ per rāśi
+        retrograde=retro,
+    )
+
+
+def graha_positions(jd: float) -> list[Graha]:
+    """Sidereal (Lahiri) positions of the nine grahas at `jd`, in vāra-lord order."""
+    out: list[Graha] = []
+    rahu_lon = 0.0
+    for key, name, symbol, body in GRAHAS:
+        if key == "ke":                     # Ketu is 180° from Rāhu
+            out.append(_place_graha(key, name, symbol, rahu_lon + 180, True))
+            continue
+        xx = swe.calc_ut(jd, body, PLANET_FLAGS)[0]
+        lon, speed = xx[0] % 360, xx[3]
+        retro = key == "ra" or speed < 0.0  # the mean node always runs backwards
+        if key == "ra":
+            rahu_lon = lon
+        out.append(_place_graha(key, name, symbol, lon, retro))
+    return out
 
 
 # ---------- rise / set ----------
@@ -135,6 +206,24 @@ def _end_of(jd: float, value_fn, arc: float, tz: ZoneInfo) -> datetime:
     return from_jd(hi, tz)
 
 
+def _start_of(jd: float, value_fn, arc: float, tz: ZoneInfo) -> datetime:
+    """Bisect backward for the moment the running angle last crossed a multiple
+    of `arc` — i.e. when the current tithi/nakṣatra/etc. began."""
+    start = value_fn(jd)
+    target = int(start // arc) * arc        # boundary at or just below `start`
+    lo, hi = jd - 2.0, jd
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        v = value_fn(mid)
+        if v > start:                       # wrapped back past 0
+            v -= 360
+        if v < target:
+            lo = mid
+        else:
+            hi = mid
+    return from_jd(hi, tz)
+
+
 @dataclass
 class Panchanga:
     date: datetime
@@ -145,24 +234,45 @@ class Panchanga:
     tithi_index: int
     tithi_name: str
     paksha: str
+    tithi_begins: datetime
     tithi_ends: datetime
     nakshatra: str
+    nakshatra_begins: datetime
     nakshatra_ends: datetime
     yoga: str
+    yoga_begins: datetime
     yoga_ends: datetime
     karana: str
+    karana_begins: datetime
+    karana_ends: datetime
     moon_phase_pct: float
+    planets: list[Graha]
+
+    def _fmt(self, d: datetime) -> str:
+        """HH:MM, prefixed with the weekday when it falls outside sunrise's day."""
+        return (d.strftime("%H:%M") if d.date() == self.sunrise.date()
+                else d.strftime("%a %H:%M"))
 
     def as_lines(self) -> list[str]:
-        f = lambda d: d.strftime("%H:%M")
+        span = lambda b, e: f"{self._fmt(b)}→{self._fmt(e)}"
         return [
-            f"☉ Sunrise {f(self.sunrise)} · Sunset {f(self.sunset)}",
+            f"☉ Sunrise {self._fmt(self.sunrise)} · Sunset {self._fmt(self.sunset)}",
             f"📅 {self.vara} · {self.paksha.capitalize()} {self.tithi_name} "
-            f"(→ {f(self.tithi_ends)})",
-            f"⭐ Nakṣatra {self.nakshatra} (→ {f(self.nakshatra_ends)})",
-            f"🧿 Yoga {self.yoga} (→ {f(self.yoga_ends)}) · Karaṇa {self.karana}",
+            f"({span(self.tithi_begins, self.tithi_ends)})",
+            f"⭐ Nakṣatra {self.nakshatra} ({span(self.nakshatra_begins, self.nakshatra_ends)})",
+            f"🧿 Yoga {self.yoga} ({span(self.yoga_begins, self.yoga_ends)})",
+            f"🔀 Karaṇa {self.karana} ({span(self.karana_begins, self.karana_ends)})",
             f"🌘 Moon {self.moon_phase_pct:.0f}% illuminated",
         ]
+
+    def sky_lines(self) -> list[str]:
+        """The navagraha snapshot — one line per planet."""
+        out = ["<b>Sky at sunrise</b>  <i>nakṣatra pada [navāṁśa] · rāśi</i>"]
+        for g in self.planets:
+            retro = " ℞" if g.retrograde else ""
+            out.append(f"{g.symbol} {g.name} — {g.nakshatra} {g.pada} "
+                       f"[{g.navamsa}] · {g.rashi}{retro}")
+        return out
 
 
 def compute(at: datetime, place: Place) -> Panchanga:
@@ -198,11 +308,17 @@ def compute(at: datetime, place: Place) -> Panchanga:
         date=sr, place=place, sunrise=sr, sunset=ss,
         vara=VARAS[(sr.weekday() + 1) % 7],
         tithi_index=ti, tithi_name=tname, paksha=paksha,
+        tithi_begins=_start_of(jd, diff, 12.0, tz),
         tithi_ends=_end_of(jd, diff, 12.0, tz),
         nakshatra=NAKSHATRAS[nak],
-        nakshatra_ends=_end_of(jd, moon_sid, 360 / 27, tz),
+        nakshatra_begins=_start_of(jd, moon_sid, NAK_ARC, tz),
+        nakshatra_ends=_end_of(jd, moon_sid, NAK_ARC, tz),
         yoga=YOGAS[yg],
-        yoga_ends=_end_of(jd, yoga_sid, 360 / 27, tz),
+        yoga_begins=_start_of(jd, yoga_sid, NAK_ARC, tz),
+        yoga_ends=_end_of(jd, yoga_sid, NAK_ARC, tz),
         karana=karana,
+        karana_begins=_start_of(jd, diff, 6.0, tz),
+        karana_ends=_end_of(jd, diff, 6.0, tz),
         moon_phase_pct=(1 - __import__("math").cos(__import__("math").radians(diff(jd)))) / 2 * 100,
+        planets=graha_positions(jd),
     )
