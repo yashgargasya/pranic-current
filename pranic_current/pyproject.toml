@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pranic-current"
+version = "0.1.0"
+description = "A svara-yoga scheduler after the Śiva Svarodaya — Telegrams you at every change of current and element."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+keywords = ["svara-yoga", "panchanga", "jyotish", "telegram", "swisseph"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Religion",
+]
+dependencies = [
+    "pyswisseph>=2.10.3",
+    "requests>=2.31",
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10", "types-requests", "types-PyYAML"]
+
+[project.scripts]
+pranic = "pranic_current.cli:main"
+
+[tool.setuptools]
+packages = ["pranic_current"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true   # swisseph ships no stubs
+warn_unused_ignores = true

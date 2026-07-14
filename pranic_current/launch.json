@@ -1,0 +1,51 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "pranic: now",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pranic_current",
+      "args": ["now"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": false
+    },
+    {
+      "name": "pranic: today (full timeline)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pranic_current",
+      "args": ["today"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "pranic: digest (dry run, prints instead of sending)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pranic_current",
+      "args": ["digest", "--dry-run"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "pranic: run daemon (dry run, 5s poll)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pranic_current",
+      "args": ["run", "--dry-run", "--interval", "5"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "pranic: run daemon (LIVE — sends Telegrams)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pranic_current",
+      "args": ["run"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}
