@@ -8,6 +8,12 @@
 
 from __future__ import annotations
 
+import sys
+
+if sys.platform == "win32":                    # cp1252 chokes on ā, ṭ, ś
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import argparse
 import logging
 import os
@@ -51,7 +57,7 @@ def load_config(path: str | None) -> dict:
 
     cfg = DEFAULT_CONFIG
     if path and Path(path).exists():
-        loaded = yaml.safe_load(Path(path).read_text()) or {}
+        loaded = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
         for k, v in loaded.items():
             cfg[k] = {**cfg.get(k, {}), **v} if isinstance(v, dict) else v
     t = cfg["telegram"]
