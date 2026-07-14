@@ -2,22 +2,25 @@
 place:
   name: "Union City, CA"
   lat: 37.5934
-  lon: -122.0439 # WEST — negative
+  lon: -122.0439        # east positive
   tz: "America/Los_Angeles"
 
 rules:
-  swara_period: 60 # minutes per current (2.5 ghaṭikās). 90 also attested.
-  tattva_order: classical # classical | vayu_first
-  sushumna_sandhi: 4 # minutes straddling each change
+  swara_period: 60            # minutes per current (2.5 ghaṭikās). 90 also attested.
+  tattva_order: classical     # classical | vayu_first
+  sushumna_sandhi: 4          # minutes straddling each change
   treat_akasha_as_sushumna: false
 
 notify:
-  swara_changes: true # 24/day
-  tattva_changes: false # 120/day — turn on only if you mean it
+  swara_changes: true         # 24/day
+  tattva_changes: false       # 120/day — turn on only if you mean it
   sushumna: true
-  sunrise_digest: true # panchanga + the day's currents
+  ask_observation: true      # attach left/right/both buttons to svara changes
+  sunrise_digest: true        # panchanga + navagraha sky at sunrise
+  transits: true              # planet rāśi/nakṣatra/pada changes (full pada granularity)
   quiet_hours: [22, 6]
   quiet_allows_sushumna: false
+  quiet_allows_transits: false
 
 telegram:
   token: "${TELEGRAM_BOT_TOKEN}"
